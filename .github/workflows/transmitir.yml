@@ -4,39 +4,48 @@ on:
   workflow_dispatch:
     inputs:
       artefato_url:
-        description: "URL de download do artefato .zip"
+        description: "URL de download do artefato (ZIP)"
         required: true
         type: string
 
 jobs:
   transmitir:
     runs-on: ubuntu-latest
+    env:
+      ARTEFATO_ZIP: artefato.zip
 
     steps:
       - name: 📥 Clonar repositório
         uses: actions/checkout@v4
 
-      - name: ⬇️ Baixar artefato de vídeo final via URL
-        run: |
-          mkdir -p artefatos/video_final
-          curl -L "${{ github.event.inputs.artefato_url }}" -o artefato.zip
-          unzip artefato.zip -d artefatos/video_final
-          rm artefato.zip
+      - name: 📁 Criar diretório para artefatos
+        run: mkdir -p artefatos/video_final
 
-      - name: 🧰 Instalar Node.js
+      - name: 🔐 Baixar artefato com autenticação
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🔽 Baixando artefato da URL: ${{ inputs.artefato_url }}"
+          curl -H "Authorization: Bearer $GH_TOKEN" \
+               -L "${{ inputs.artefato_url }}" \
+               -o "$ARTEFATO_ZIP"
+
+      - name: 📦 Extrair artefato
+        run: |
+          unzip "$ARTEFATO_ZIP" -d artefatos/video_final
+
+      - name: 🧰 Instalar Node.js e ffmpeg
         uses: actions/setup-node@v3
         with:
           node-version: '18'
 
-      - name: 🧰 Instalar dependências
+      - name: 🧰 Instalar dependências do Node.js e ffmpeg
         run: |
           sudo apt update
           sudo apt install -y ffmpeg
-
           if [ ! -f package.json ]; then
             echo '{}' > package.json
           fi
-
           npm install
 
       - name: ▶️ Iniciar transmissão com transmitir.js
