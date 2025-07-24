@@ -2,6 +2,11 @@ name: Iniciar Transmissão
 
 on:
   workflow_dispatch:
+    inputs:
+      artefato_url:
+        description: "URL de download do artefato .zip"
+        required: true
+        type: string
 
 jobs:
   transmitir:
@@ -11,23 +16,23 @@ jobs:
       - name: 📥 Clonar repositório
         uses: actions/checkout@v4
 
-      - name: 📥 Baixar artefatos de vídeo final
-        uses: actions/download-artifact@v4
-        with:
-          name: artefatos-video-final
-          path: artefatos/video_final
+      - name: ⬇️ Baixar artefato de vídeo final via URL
+        run: |
+          mkdir -p artefatos/video_final
+          curl -L "${{ github.event.inputs.artefato_url }}" -o artefato.zip
+          unzip artefato.zip -d artefatos/video_final
+          rm artefato.zip
 
-      - name: 🧰 Instalar Node.js (se necessário) e dependências
+      - name: 🧰 Instalar Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18'
 
-      - name: 🧰 Instalar dependências do Node.js e ffmpeg
+      - name: 🧰 Instalar dependências
         run: |
           sudo apt update
           sudo apt install -y ffmpeg
-          
-          # Criar package.json se não existir
+
           if [ ! -f package.json ]; then
             echo '{}' > package.json
           fi
