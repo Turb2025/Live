@@ -1,0 +1,38 @@
+name: Iniciar Transmissão
+
+on:
+  workflow_dispatch:
+
+jobs:
+  transmitir:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Clonar repositório
+        uses: actions/checkout@v4
+
+      - name: 📥 Baixar artefatos de vídeo final
+        uses: actions/download-artifact@v4
+        with:
+          name: artefatos-video-final
+          path: artefatos/video_final
+
+      - name: 🧰 Instalar Node.js (se necessário) e dependências
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: 🧰 Instalar dependências do Node.js e ffmpeg
+        run: |
+          sudo apt update
+          sudo apt install -y ffmpeg
+          
+          # Criar package.json se não existir
+          if [ ! -f package.json ]; then
+            echo '{}' > package.json
+          fi
+
+          npm install
+
+      - name: ▶️ Iniciar transmissão com transmitir.js
+        run: node transmitir.js
