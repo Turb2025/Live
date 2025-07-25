@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       artefato_url:
-        description: 'URL do artefato (API)'
+        description: 'URL do artefato (API ou GitHub)'
         required: true
 
 jobs:
@@ -15,25 +15,29 @@ jobs:
       - name: 🔁 Clonar repositório
         uses: actions/checkout@v4
 
-      - name: 🧠 Corrigir URL se necessário
-        id: corrigir
+      - name: 🛠️ Corrigir URL se necessário
+        id: corrigir_url
         run: |
-          INPUT_URL="${{ github.event.inputs.artefato_url }}"
-          if [[ "$INPUT_URL" == https://github.com/* ]]; then
-            CORRIGIDA=$(echo "$INPUT_URL" | sed 's|https://github.com/|https://api.github.com/repos/|' | sed 's|/actions/artifacts/|/actions/artifacts/|' | sed 's|/zip||')
-            echo "🔁 URL corrigida para: $CORRIGIDA"
+          URL="${{ github.event.inputs.artefato_url }}"
+          if [[ "$URL" == https://github.com/* ]]; then
+            echo "🔧 Corrigindo URL para formato da API..."
+            API_URL=$(echo "$URL" | sed -E 's|https://github\.com/([^/]+)/([^/]+)/actions/runs/[0-9]+/artifacts/([0-9]+)|https://api.github.com/repos/\1/\2/actions/artifacts/\3/zip|')
+            echo "url_corrigida=$API_URL" >> "$GITHUB_OUTPUT"
+            echo "✅ URL corrigida: $API_URL"
           else
-            CORRIGIDA="$INPUT_URL"
+            echo "✅ URL já está no formato da API: $URL"
+            echo "url_corrigida=$URL" >> "$GITHUB_OUTPUT"
           fi
-          echo "url_corrigida=$CORRIGIDA" >> "$GITHUB_OUTPUT"
 
-      - name: 📥 Baixando artefato zipado via API
+      - name: 📥 Baixar artefato zipado
         run: |
-          echo "🔗 Baixando artefato de: ${{ steps.corrigir.outputs.url_corrigida }}"
+          URL="${{ steps.corrigir_url.outputs.url_corrigida }}"
+          echo "🔗 Baixando artefato de: $URL"
           curl -L \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
             -H "Accept: application/zip" \
-            "${{ steps.corrigir.outputs.url_corrigida }}" \
+            "$URL" \
             -o artefato.zip
 
       - name: 📦 Descompactar artefato
@@ -44,10 +48,8 @@ jobs:
             exit 1
           }
 
-      - name: 📂 Listar conteúdo do artefato
-        run: |
-          echo "📁 Conteúdo extraído:"
-          find artefatos/video_final -type f
+      - name: 📂 Listar conteúdo extraído
+        run: find artefatos/video_final -type f
 
       - name: 🧰 Instalar Node.js
         uses: actions/setup-node@v4
@@ -59,29 +61,33 @@ jobs:
           sudo apt update
           sudo apt install -y ffmpeg
 
+      - name: 📦 Instalar dependências do projeto
+        working-directory: artefatos/video_final
+        run: |
+          echo '{}' > package.json
+          npm install
+
       - name: 🚀 Iniciar Transmissão com transmitir.js
         run: |
-          echo "🚀 Iniciando transmissão com transmitir.js..."
+          echo "🚀 Transmitindo com transmitir.js..."
           node transmitir.js
 
-      - name: 🧹 Deletar artefato após transmissão
+      - name: 🗑️ Excluir artefato após transmissão
+        if: always()
         env:
-          GH_TOKEN: ${{ secrets.LIVE_DELETE_TOKEN }}
+          PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
         run: |
-          echo "🧼 Iniciando exclusão do artefato remoto..."
-          artefato_id=$(echo "${{ steps.corrigir.outputs.url_corrigida }}" | grep -oP 'artifacts/\K[0-9]+')
-          if [ -z "$artefato_id" ]; then
-            echo "❌ Não foi possível extrair o ID do artefato. Abortando."
-            exit 1
+          URL="${{ steps.corrigir_url.outputs.url_corrigida }}"
+          echo "🧪 Extraindo ID do artefato..."
+          ID=$(echo "$URL" | grep -oP 'artifacts/\K[0-9]+')
+
+          if [[ -n "$ID" ]]; then
+            echo "🗑️ Deletando artefato ID: $ID de Miraplay2025/Live..."
+            curl -X DELETE \
+              -H "Authorization: Bearer $PERSONAL_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/Miraplay2025/Live/actions/artifacts/$ID" \
+              -w "\n✅ Artefato excluído com status: %{http_code}\n"
+          else
+            echo "⚠️ Não foi possível extrair o ID do artefato. Nenhuma exclusão feita."
           fi
-          echo "🆔 ID do artefato: $artefato_id"
-
-          curl -X DELETE \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/Miraplay2025/Live/actions/artifacts/$artefato_id" || {
-              echo "❌ Falha ao deletar artefato."
-              exit 1
-          }
-
-          echo "✅ Artefato $artefato_id excluído com sucesso."
