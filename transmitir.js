@@ -1,6 +1,7 @@
 const fs = require('fs');
 const { spawn } = require('child_process');
 const path = require('path');
+const os = require('os');
 
 const artefatosDir = path.resolve('artefatos/video_final');
 const tsList = JSON.parse(fs.readFileSync(path.join(artefatosDir, 'ts_paths.json'), 'utf-8'));
@@ -72,15 +73,37 @@ function limparArtefatos() {
     console.log(`\n⏳ Duração total estimada da live: ${formatarTempo(duracaoTotal)}\n`);
 
     const concatStr = `concat:${tsList.join('|')}`;
-    console.log(`📡 Conectando ao servidor de streaming e iniciando transmissão...\n`);
+
+    const inicioRodape1 = 250; // 4min10s
+    const fimRodape1 = 260;
+
+    const inicioRodape2 = Math.max(0, duracaoTotal - 240); // Faltando 4min
+    const fimRodape2 = Math.max(0, duracaoTotal - 230);
+
+    const enableOverlay = `between(t\\,${inicioRodape1}\\,${fimRodape1})+between(t\\,${inicioRodape2}\\,${fimRodape2})`;
+
+    console.log(`📡 Transmitindo com rodapé visível de 4:10 a 4:20 e novamente faltando 4:00 até 3:50 para o fim.\n`);
 
     const ffmpeg = spawn('ffmpeg', [
       '-re',
       '-i', concatStr,
-      '-c', 'copy',
+      '-i', 'rodape.png',
+      '-filter_complex',
+      `[1:v]scale=1280:-1[rodape];[0:v]setpts=PTS-STARTPTS[base];[base][rodape]overlay=enable='${enableOverlay}':x=0:y=H-h[outv]`,
+      '-map', '[outv]',
+      '-map', '0:a?',
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-crf', '23',
+      '-c:a', 'aac',
+      '-b:a', '192k',
+      '-ar', '44100',
+      '-ac', '2',
       '-f', 'flv',
       streamInfo.stream_url
-    ]);
+    ], {
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
 
     let tempoDecorrido = 0;
     const intervalo = setInterval(() => {
