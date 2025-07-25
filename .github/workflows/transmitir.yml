@@ -57,4 +57,21 @@ jobs:
       - name: 🚀 Iniciar Transmissão com transmitir.js
         run: |
           echo "🚀 Iniciando transmissão com transmitir.js..."
-          node transmitir.js
+          node artefatos/video_final/transmitir.js
+
+      - name: 🧹 Deletar artefato remoto após transmissão
+        run: |
+          echo "🧹 Excluindo artefato remoto..."
+
+          # Extrai o ID da URL
+          ARTEFATO_URL="${{ github.event.inputs.artefato_url }}"
+          ARTEFATO_ID=$(echo "$ARTEFATO_URL" | sed -E 's|.*/artifacts/([0-9]+)/zip|\1|')
+
+          echo "🔍 Artefato ID extraído: $ARTEFATO_ID"
+
+          curl -X DELETE \
+            -H "Authorization: Bearer ${{ secrets.LIVE_PAT }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/Miraplay2025/Live/actions/artifacts/$ARTEFATO_ID \
+          && echo "✅ Artefato $ARTEFATO_ID excluído com sucesso." \
+          || echo "⚠️ Falha ao excluir artefato $ARTEFATO_ID"
