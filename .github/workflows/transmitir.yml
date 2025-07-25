@@ -40,10 +40,10 @@ jobs:
             "$URL" \
             -o artefato.zip
 
-      - name: 📦 Descompactar artefato
+      - name: 📦 Descompactar artefato corretamente
         run: |
-          mkdir -p artefatos/video_final
-          unzip artefato.zip -d artefatos/video_final || {
+          mkdir -p artefatos
+          unzip artefato.zip -d artefatos || {
             echo "❌ Erro ao descompactar. Verifique se o link é válido ou se o artefato expirou."
             exit 1
           }
@@ -51,7 +51,7 @@ jobs:
       - name: 📂 Verificar estrutura do artefato
         run: |
           echo "📁 Estrutura final do artefato extraído:"
-          find artefatos/video_final -type f
+          find artefatos -type f
 
           echo "🔍 Verificando se rodape.png está presente..."
           RODAPE_PATH="artefatos/video_final/rodape.png"
