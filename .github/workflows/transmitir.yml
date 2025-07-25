@@ -68,12 +68,14 @@ jobs:
           npm install
 
       - name: 🚀 Iniciar Transmissão com transmitir.js
+        id: transmissao
+        working-directory: artefatos/video_final
         run: |
           echo "🚀 Transmitindo com transmitir.js..."
           node transmitir.js
 
       - name: 🗑️ Excluir artefato após transmissão
-        if: always()
+        if: success() && steps.transmissao.outcome == 'success'
         env:
           PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
         run: |
