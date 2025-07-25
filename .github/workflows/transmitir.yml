@@ -62,20 +62,18 @@ jobs:
           sudo apt install -y ffmpeg
 
       - name: 📦 Instalar dependências do projeto
-        working-directory: artefatos/video_final
         run: |
           echo '{}' > package.json
           npm install
 
       - name: 🚀 Iniciar Transmissão com transmitir.js
-        id: transmissao
-        working-directory: artefatos/video_final
+        id: transmitir
         run: |
           echo "🚀 Transmitindo com transmitir.js..."
           node transmitir.js
 
-      - name: 🗑️ Excluir artefato após transmissão
-        if: success() && steps.transmissao.outcome == 'success'
+      - name: 🗑️ Excluir artefato após transmissão bem-sucedida
+        if: success() && steps.transmitir.outcome == 'success'
         env:
           PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
         run: |
