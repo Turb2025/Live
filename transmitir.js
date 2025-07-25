@@ -1,7 +1,6 @@
 const fs = require('fs');
 const { spawn } = require('child_process');
 const path = require('path');
-const os = require('os');
 
 const artefatosDir = path.resolve('artefatos/video_final');
 const tsList = JSON.parse(fs.readFileSync(path.join(artefatosDir, 'ts_paths.json'), 'utf-8'));
@@ -57,6 +56,11 @@ function limparArtefatos() {
     const sequencia = [];
 
     for (const arquivo of tsList) {
+      // Ignorar arquivos que não sejam vídeos (ex: rodape.png)
+      if (!arquivo.toLowerCase().endsWith('.ts')) {
+        console.log(`ℹ️ Ignorando arquivo não-vídeo para duração: ${arquivo}`);
+        continue;
+      }
       const duracao = await obterDuracao(arquivo);
       duracaoTotal += duracao;
       sequencia.push({
@@ -72,7 +76,7 @@ function limparArtefatos() {
 
     console.log(`\n⏳ Duração total estimada da live: ${formatarTempo(duracaoTotal)}\n`);
 
-    const concatStr = `concat:${tsList.join('|')}`;
+    const concatStr = `concat:${tsList.filter(f => f.toLowerCase().endsWith('.ts')).join('|')}`;
 
     const inicioRodape1 = 250; // 4min10s
     const fimRodape1 = 260;
