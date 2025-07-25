@@ -48,21 +48,31 @@ function limparArtefatos() {
   try {
     console.log('🚀 Iniciando transmissão...');
     console.log(`🆔 ID da live: ${streamInfo.id}`);
-    console.log(`📡 URL da stream: ${streamInfo.stream_url}`);
-    console.log('🎬 Vídeos a transmitir:');
-    tsList.forEach(v => console.log(`  - ${v}`));
+    console.log(`📡 URL da stream: ${streamInfo.stream_url}\n`);
 
-    // Obter duração total somando durações dos arquivos .ts
+    console.log('📋 Sequência dos vídeos que serão transmitidos:\n');
+
     let duracaoTotal = 0;
+    const sequencia = [];
+
     for (const arquivo of tsList) {
       const duracao = await obterDuracao(arquivo);
-      console.log(`⏱️ Duração de ${path.basename(arquivo)}: ${formatarTempo(duracao)}`);
       duracaoTotal += duracao;
+      sequencia.push({
+        nome: path.basename(arquivo),
+        duracao: formatarTempo(duracao),
+      });
     }
+
+    // Exibir a sequência formatada
+    sequencia.forEach((item, i) => {
+      console.log(`  ${i + 1}. ${item.nome} — duração: ${item.duracao}`);
+    });
+
     console.log(`\n⏳ Duração total estimada da live: ${formatarTempo(duracaoTotal)}\n`);
 
     const concatStr = `concat:${tsList.join('|')}`;
-    console.log(`📡 Conectando ao servidor de streaming e iniciando transmissão...`);
+    console.log(`📡 Conectando ao servidor de streaming e iniciando transmissão...\n`);
 
     const ffmpeg = spawn('ffmpeg', [
       '-re',
