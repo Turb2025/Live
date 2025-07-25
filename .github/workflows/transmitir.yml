@@ -51,6 +51,16 @@ jobs:
       - name: 📂 Listar conteúdo extraído
         run: find artefatos/video_final -type f
 
+      - name: 📝 Verificar rodapé baixado
+        run: |
+          RODAPE_PATH="artefatos/video_final/rodape.png"
+          if [[ -f "$RODAPE_PATH" ]]; then
+            echo "✅ Rodapé encontrado em: $RODAPE_PATH"
+          else
+            echo "⚠️ Rodapé NÃO encontrado em: $RODAPE_PATH"
+            exit 1
+          fi
+
       - name: 🧰 Instalar Node.js
         uses: actions/setup-node@v4
         with:
