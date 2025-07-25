@@ -56,7 +56,6 @@ function limparArtefatos() {
     const sequencia = [];
 
     for (const arquivo of tsList) {
-      // Ignorar arquivos que não sejam vídeos (ex: rodape.png)
       if (!arquivo.toLowerCase().endsWith('.ts')) {
         console.log(`ℹ️ Ignorando arquivo não-vídeo para duração: ${arquivo}`);
         continue;
@@ -76,7 +75,15 @@ function limparArtefatos() {
 
     console.log(`\n⏳ Duração total estimada da live: ${formatarTempo(duracaoTotal)}\n`);
 
-    const concatStr = `concat:${tsList.filter(f => f.toLowerCase().endsWith('.ts')).join('|')}`;
+    // Separar caminho do rodapé e os arquivos de vídeo .ts
+    const arquivosVideo = tsList.filter(f => f.toLowerCase().endsWith('.ts'));
+    const rodapePath = tsList.find(f => f.toLowerCase().endsWith('.png'));
+
+    if (!rodapePath || !fs.existsSync(rodapePath)) {
+      throw new Error(`Arquivo de rodapé não encontrado: ${rodapePath}`);
+    }
+
+    const concatStr = `concat:${arquivosVideo.join('|')}`;
 
     const inicioRodape1 = 250; // 4min10s
     const fimRodape1 = 260;
@@ -91,7 +98,7 @@ function limparArtefatos() {
     const ffmpeg = spawn('ffmpeg', [
       '-re',
       '-i', concatStr,
-      '-i', 'rodape.png',
+      '-i', rodapePath,
       '-filter_complex',
       `[1:v]scale=1280:-1[rodape];[0:v]setpts=PTS-STARTPTS[base];[base][rodape]overlay=enable='${enableOverlay}':x=0:y=H-h[outv]`,
       '-map', '[outv]',
