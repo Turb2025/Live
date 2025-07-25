@@ -55,11 +55,9 @@ function limparArtefatos() {
     let duracaoTotal = 0;
     const sequencia = [];
 
-    for (const arquivo of tsList) {
-      if (!arquivo.toLowerCase().endsWith('.ts')) {
-        console.log(`ℹ️ Ignorando arquivo não-vídeo para duração: ${arquivo}`);
-        continue;
-      }
+    const arquivosVideo = tsList.filter(f => f.toLowerCase().endsWith('.ts'));
+
+    for (const arquivo of arquivosVideo) {
       const duracao = await obterDuracao(arquivo);
       duracaoTotal += duracao;
       sequencia.push({
@@ -75,12 +73,11 @@ function limparArtefatos() {
 
     console.log(`\n⏳ Duração total estimada da live: ${formatarTempo(duracaoTotal)}\n`);
 
-    // Separar caminho do rodapé e os arquivos de vídeo .ts
-    const arquivosVideo = tsList.filter(f => f.toLowerCase().endsWith('.ts'));
-    const rodapePath = tsList.find(f => f.toLowerCase().endsWith('.png'));
+    // Caminho fixo do rodapé
+    const rodapePath = path.join(artefatosDir, 'rodape.png');
 
-    if (!rodapePath || !fs.existsSync(rodapePath)) {
-      throw new Error(`Arquivo de rodapé não encontrado: ${rodapePath}`);
+    if (!fs.existsSync(rodapePath)) {
+      throw new Error(`❌ Arquivo de rodapé não encontrado em: ${rodapePath}`);
     }
 
     const concatStr = `concat:${arquivosVideo.join('|')}`;
