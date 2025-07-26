@@ -3,9 +3,9 @@ const { spawn } = require('child_process');
 const path = require('path');
 const https = require('https');
 
-const artefatosDir = path.resolve('artefatos/video_final');
-const tsList = JSON.parse(fs.readFileSync(path.join(artefatosDir, 'ts_paths.json'), 'utf-8'));
-const streamInfo = JSON.parse(fs.readFileSync(path.join(artefatosDir, 'stream_info.json'), 'utf-8'));
+const artefatosDir = path.resolve('artefatos');
+const tsListPath = path.join(artefatosDir, 'ts_paths.json');
+const streamInfoPath = path.join(artefatosDir, 'stream_info.json');
 const rodapeUrl = 'https://livestream.ct.ws/Google%20drive/rodape/rodapé.html';
 
 function formatarTempo(segundos) {
@@ -32,14 +32,16 @@ function obterDuracao(video) {
 }
 
 function limparArtefatos() {
-  console.log('\n🧹 Limpando arquivos em artefatos/video_final...');
+  console.log('\n🧹 Limpando arquivos em artefatos...');
   if (!fs.existsSync(artefatosDir)) return;
   const arquivos = fs.readdirSync(artefatosDir);
   for (const arquivo of arquivos) {
     const caminho = path.join(artefatosDir, arquivo);
     try {
-      fs.unlinkSync(caminho);
-      console.log(`🗑️ Removido: ${caminho}`);
+      if (fs.lstatSync(caminho).isFile()) {
+        fs.unlinkSync(caminho);
+        console.log(`🗑️ Removido: ${caminho}`);
+      }
     } catch (err) {
       console.warn(`⚠️ Falha ao remover: ${caminho} - ${err.message}`);
     }
@@ -53,7 +55,9 @@ function baixarRodape(url, destino) {
       res.on('data', chunk => html += chunk.toString());
       res.on('end', () => {
         try {
-          const base64 = JSON.parse(html).base64;
+          const json = JSON.parse(html);
+          const base64 = json.imagem || json.base64; // compatível com as duas chaves
+          if (!base64) throw new Error('Campo "imagem" ou "base64" não encontrado.');
           const bin = Buffer.from(base64, 'base64');
           fs.writeFileSync(destino, bin);
           console.log(`🖼️ Rodapé salvo em: ${destino}`);
@@ -71,6 +75,14 @@ function baixarRodape(url, destino) {
 (async () => {
   try {
     console.log('🚀 Iniciando transmissão...');
+
+    if (!fs.existsSync(tsListPath) || !fs.existsSync(streamInfoPath)) {
+      throw new Error('Arquivos essenciais não encontrados: ts_paths.json ou stream_info.json');
+    }
+
+    const tsList = JSON.parse(fs.readFileSync(tsListPath, 'utf-8'));
+    const streamInfo = JSON.parse(fs.readFileSync(streamInfoPath, 'utf-8'));
+
     console.log(`🆔 ID da live: ${streamInfo.id}`);
     console.log(`📡 URL da stream: ${streamInfo.stream_url}\n`);
 
@@ -84,7 +96,8 @@ function baixarRodape(url, destino) {
     const sequencia = [];
 
     for (const arquivo of arquivosVideo) {
-      const duracao = await obterDuracao(arquivo);
+      const caminho = path.join(artefatosDir, arquivo);
+      const duracao = await obterDuracao(caminho);
       duracaoTotal += duracao;
       sequencia.push({
         nome: path.basename(arquivo),
@@ -98,7 +111,8 @@ function baixarRodape(url, destino) {
 
     console.log(`\n⏳ Duração total estimada da live: ${formatarTempo(duracaoTotal)}\n`);
 
-    const concatStr = `concat:${arquivosVideo.join('|')}`;
+    // Cálculo das faixas de exibição do rodapé
+    const concatStr = `concat:${arquivosVideo.map(f => path.join(artefatosDir, f)).join('|')}`;
     const inicioRodape1 = 250;
     const fimRodape1 = 260;
     const inicioRodape2 = Math.max(0, duracaoTotal - 240);
@@ -154,6 +168,7 @@ function baixarRodape(url, destino) {
         }
       });
     });
+
   } catch (erro) {
     console.error(`\n❌ Erro: ${erro.message}`);
     limparArtefatos();
