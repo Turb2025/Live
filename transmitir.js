@@ -56,13 +56,14 @@ function baixarRodape(url, destino) {
       res.on('end', () => {
         try {
           const json = JSON.parse(html);
-          const base64 = json.imagem || json.base64; // compatível com as duas chaves
+          const base64 = json.imagem || json.base64;
           if (!base64) throw new Error('Campo "imagem" ou "base64" não encontrado.');
-          const bin = Buffer.from(base64, 'base64');
+          const bin = Buffer.from(base64.split(',')[1] || base64, 'base64'); // remove prefixo data:image/png;base64,
           fs.writeFileSync(destino, bin);
           console.log(`🖼️ Rodapé salvo em: ${destino}`);
           resolve();
         } catch (err) {
+          console.error('❌ Conteúdo recebido de rodape.html:\n', html);
           reject(new Error('❌ Erro ao processar rodape.html: ' + err.message));
         }
       });
@@ -111,7 +112,7 @@ function baixarRodape(url, destino) {
 
     console.log(`\n⏳ Duração total estimada da live: ${formatarTempo(duracaoTotal)}\n`);
 
-    // Cálculo das faixas de exibição do rodapé
+    // Exibir rodapé em 2 momentos específicos
     const concatStr = `concat:${arquivosVideo.map(f => path.join(artefatosDir, f)).join('|')}`;
     const inicioRodape1 = 250;
     const fimRodape1 = 260;
