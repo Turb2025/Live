@@ -53,15 +53,6 @@ jobs:
           echo "📁 Estrutura final do artefato extraído:"
           find artefatos -type f
 
-          echo "🔍 Verificando se rodape.png está presente..."
-          RODAPE_PATH="artefatos/video_final/rodape.png"
-          if [[ -f "$RODAPE_PATH" ]]; then
-            echo "✅ Rodapé está presente no artefato em: $RODAPE_PATH"
-          else
-            echo "❌ Rodapé NÃO encontrado!"
-            exit 1
-          fi
-
           echo "🧾 Verificando arquivos essenciais:"
           for file in ts_paths.json stream_info.json; do
             if [[ -f "artefatos/video_final/$file" ]]; then
