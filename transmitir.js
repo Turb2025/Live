@@ -1,10 +1,12 @@
 const fs = require('fs');
 const { spawn } = require('child_process');
 const path = require('path');
+const https = require('https');
 
 const artefatosDir = path.resolve('artefatos/video_final');
 const tsList = JSON.parse(fs.readFileSync(path.join(artefatosDir, 'ts_paths.json'), 'utf-8'));
 const streamInfo = JSON.parse(fs.readFileSync(path.join(artefatosDir, 'stream_info.json'), 'utf-8'));
+const rodapeUrl = 'https://livestream.ct.ws/Google%20drive/rodape/rodapé.html';
 
 function formatarTempo(segundos) {
   const m = Math.floor(segundos / 60);
@@ -44,18 +46,42 @@ function limparArtefatos() {
   }
 }
 
+function baixarRodape(url, destino) {
+  return new Promise((resolve, reject) => {
+    https.get(url, res => {
+      let html = '';
+      res.on('data', chunk => html += chunk.toString());
+      res.on('end', () => {
+        try {
+          const base64 = JSON.parse(html).base64;
+          const bin = Buffer.from(base64, 'base64');
+          fs.writeFileSync(destino, bin);
+          console.log(`🖼️ Rodapé salvo em: ${destino}`);
+          resolve();
+        } catch (err) {
+          reject(new Error('❌ Erro ao processar rodape.html: ' + err.message));
+        }
+      });
+    }).on('error', err => {
+      reject(new Error('❌ Erro ao baixar rodapé: ' + err.message));
+    });
+  });
+}
+
 (async () => {
   try {
     console.log('🚀 Iniciando transmissão...');
     console.log(`🆔 ID da live: ${streamInfo.id}`);
     console.log(`📡 URL da stream: ${streamInfo.stream_url}\n`);
 
-    console.log('📋 Sequência dos vídeos que serão transmitidos:\n');
+    console.log('🌐 Obtendo rodapé remoto...');
+    const rodapePath = path.join(artefatosDir, 'rodape.png');
+    await baixarRodape(rodapeUrl, rodapePath);
+
+    const arquivosVideo = tsList.filter(f => f.toLowerCase().endsWith('.ts'));
 
     let duracaoTotal = 0;
     const sequencia = [];
-
-    const arquivosVideo = tsList.filter(f => f.toLowerCase().endsWith('.ts'));
 
     for (const arquivo of arquivosVideo) {
       const duracao = await obterDuracao(arquivo);
@@ -66,28 +92,17 @@ function limparArtefatos() {
       });
     }
 
-    // Exibir a sequência formatada
     sequencia.forEach((item, i) => {
       console.log(`  ${i + 1}. ${item.nome} — duração: ${item.duracao}`);
     });
 
     console.log(`\n⏳ Duração total estimada da live: ${formatarTempo(duracaoTotal)}\n`);
 
-    // Caminho fixo do rodapé
-    const rodapePath = path.join(artefatosDir, 'rodape.png');
-
-    if (!fs.existsSync(rodapePath)) {
-      throw new Error(`❌ Arquivo de rodapé não encontrado em: ${rodapePath}`);
-    }
-
     const concatStr = `concat:${arquivosVideo.join('|')}`;
-
-    const inicioRodape1 = 250; // 4min10s
+    const inicioRodape1 = 250;
     const fimRodape1 = 260;
-
-    const inicioRodape2 = Math.max(0, duracaoTotal - 240); // Faltando 4min
+    const inicioRodape2 = Math.max(0, duracaoTotal - 240);
     const fimRodape2 = Math.max(0, duracaoTotal - 230);
-
     const enableOverlay = `between(t\\,${inicioRodape1}\\,${fimRodape1})+between(t\\,${inicioRodape2}\\,${fimRodape2})`;
 
     console.log(`📡 Transmitindo com rodapé visível de 4:10 a 4:20 e novamente faltando 4:00 até 3:50 para o fim.\n`);
