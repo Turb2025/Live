@@ -6,7 +6,7 @@ const https = require('https');
 const artefatosDir = path.resolve('artefatos');
 const tsListPath = path.join(artefatosDir, 'ts_paths.json');
 const streamInfoPath = path.join(artefatosDir, 'stream_info.json');
-const rodapeUrl = 'https://livestream.ct.ws/Google%20drive/rodape/rodapé.html';
+const rodapeUrl = 'https://livestream.ct.ws/Google%20drive/rodape/rodap%C3%A9.png';
 
 function formatarTempo(segundos) {
   const m = Math.floor(segundos / 60);
@@ -48,27 +48,23 @@ function limparArtefatos() {
   }
 }
 
-function baixarRodape(url, destino) {
+function baixarImagemRodape(url, destino) {
   return new Promise((resolve, reject) => {
+    const arquivo = fs.createWriteStream(destino);
     https.get(url, res => {
-      let html = '';
-      res.on('data', chunk => html += chunk.toString());
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(html);
-          const base64 = json.imagem || json.base64;
-          if (!base64) throw new Error('Campo "imagem" ou "base64" não encontrado.');
-          const bin = Buffer.from(base64.split(',')[1] || base64, 'base64'); // remove prefixo data:image/png;base64,
-          fs.writeFileSync(destino, bin);
+      if (res.statusCode !== 200) {
+        reject(new Error(`❌ Erro ao baixar imagem: HTTP ${res.statusCode}`));
+        return;
+      }
+      res.pipe(arquivo);
+      arquivo.on('finish', () => {
+        arquivo.close(() => {
           console.log(`🖼️ Rodapé salvo em: ${destino}`);
           resolve();
-        } catch (err) {
-          console.error('❌ Conteúdo recebido de rodape.html:\n', html);
-          reject(new Error('❌ Erro ao processar rodape.html: ' + err.message));
-        }
+        });
       });
     }).on('error', err => {
-      reject(new Error('❌ Erro ao baixar rodapé: ' + err.message));
+      reject(new Error(`❌ Erro ao baixar imagem do rodapé: ${err.message}`));
     });
   });
 }
@@ -87,9 +83,9 @@ function baixarRodape(url, destino) {
     console.log(`🆔 ID da live: ${streamInfo.id}`);
     console.log(`📡 URL da stream: ${streamInfo.stream_url}\n`);
 
-    console.log('🌐 Obtendo rodapé remoto...');
+    console.log('🌐 Baixando imagem do rodapé...');
     const rodapePath = path.join(artefatosDir, 'rodape.png');
-    await baixarRodape(rodapeUrl, rodapePath);
+    await baixarImagemRodape(rodapeUrl, rodapePath);
 
     const arquivosVideo = tsList.filter(f => f.toLowerCase().endsWith('.ts'));
 
