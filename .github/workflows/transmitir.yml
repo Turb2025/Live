@@ -55,7 +55,7 @@ jobs:
 
           echo "🧾 Verificando arquivos essenciais:"
           for file in ts_paths.json stream_info.json; do
-            if [[ -f "artefatos/video_final/$file" ]]; then
+            if [[ -f "artefatos/$file" ]]; then
               echo "✅ $file encontrado."
             else
               echo "❌ $file NÃO encontrado!"
