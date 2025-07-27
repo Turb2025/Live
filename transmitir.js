@@ -2,6 +2,7 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 const path = require('path');
 const https = require('https');
+const mime = require('mime-types'); // usar para checar tipo de arquivo pelo nome
 
 const artefatosDir = path.resolve('artefatos');
 const tsListPath = path.join(artefatosDir, 'ts_paths.json');
@@ -56,11 +57,23 @@ function baixarImagemRodape(url, destino) {
         reject(new Error(`❌ Erro ao baixar imagem: HTTP ${res.statusCode}`));
         return;
       }
+
+      const contentType = res.headers['content-type'] || '';
+      if (!contentType.startsWith('image/')) {
+        reject(new Error(`❌ Conteúdo baixado não é uma imagem: tipo recebido = ${contentType}`));
+        return;
+      }
+
       res.pipe(arquivo);
       arquivo.on('finish', () => {
         arquivo.close(() => {
-          console.log(`🖼️ Rodapé salvo em: ${destino}`);
-          resolve();
+          const mimeType = mime.lookup(destino);
+          if (!mimeType || !mimeType.startsWith('image/')) {
+            reject(new Error(`❌ Arquivo salvo não é imagem válida: ${destino}`));
+          } else {
+            console.log(`🖼️ Rodapé salvo e validado como imagem: ${destino}`);
+            resolve();
+          }
         });
       });
     }).on('error', err => {
@@ -93,7 +106,7 @@ function baixarImagemRodape(url, destino) {
     const sequencia = [];
 
     for (const arquivo of arquivosVideo) {
-      const caminho = path.join(artefatosDir, arquivo);
+      const caminho = path.isAbsolute(arquivo) ? arquivo : path.join(artefatosDir, arquivo);
       const duracao = await obterDuracao(caminho);
       duracaoTotal += duracao;
       sequencia.push({
@@ -109,7 +122,7 @@ function baixarImagemRodape(url, destino) {
     console.log(`\n⏳ Duração total estimada da live: ${formatarTempo(duracaoTotal)}\n`);
 
     // Exibir rodapé em 2 momentos específicos
-    const concatStr = `concat:${arquivosVideo.map(f => path.join(artefatosDir, f)).join('|')}`;
+    const concatStr = `concat:${arquivosVideo.map(f => path.isAbsolute(f) ? f : path.join(artefatosDir, f)).join('|')}`;
     const inicioRodape1 = 250;
     const fimRodape1 = 260;
     const inicioRodape2 = Math.max(0, duracaoTotal - 240);
