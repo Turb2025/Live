@@ -60,7 +60,7 @@ function baixarImagemRodape(url, destino) {
 
       const contentType = res.headers['content-type'] || '';
       if (!contentType.startsWith('image/')) {
-        reject(new Error(`❌ Conteúdo baixado não é uma imagem: tipo recebido = ${contentType}`));
+        reject(new Error(`❌ Conteúdo baixado não é uma imagem: tipo = ${contentType}`));
         return;
       }
 
@@ -71,13 +71,13 @@ function baixarImagemRodape(url, destino) {
           if (!mimeType || !mimeType.startsWith('image/')) {
             reject(new Error(`❌ Arquivo salvo não é imagem válida: ${destino}`));
           } else {
-            console.log(`🖼️ Rodapé salvo e validado como imagem: ${destino}`);
+            console.log(`🖼️ Rodapé salvo e validado: ${destino}`);
             resolve();
           }
         });
       });
     }).on('error', err => {
-      reject(new Error(`❌ Erro ao baixar imagem do rodapé: ${err.message}`));
+      reject(new Error(`❌ Erro ao baixar imagem: ${err.message}`));
     });
   });
 }
@@ -93,21 +93,20 @@ function baixarImagemRodape(url, destino) {
     const tsListRaw = JSON.parse(fs.readFileSync(tsListPath, 'utf-8'));
     const streamInfo = JSON.parse(fs.readFileSync(streamInfoPath, 'utf-8'));
 
-    // Corrigir caminhos inválidos
     const arquivosDisponiveis = new Set(fs.readdirSync(artefatosDir));
     const arquivosVideo = tsListRaw
-      .map(f => path.basename(f)) // Ignora subpastas ou caminhos errados
+      .map(f => path.basename(f))
       .filter(f => f.toLowerCase().endsWith('.ts') && arquivosDisponiveis.has(f))
       .map(f => path.join(artefatosDir, f));
 
     if (arquivosVideo.length === 0) {
-      throw new Error('❌ Nenhum arquivo .ts válido encontrado para transmitir.');
+      throw new Error('❌ Nenhum arquivo .ts válido encontrado.');
     }
 
-    console.log(`🆔 ID da live: ${streamInfo.id}`);
-    console.log(`📡 URL da stream: ${streamInfo.stream_url}\n`);
+    console.log(`🆔 Live ID: ${streamInfo.id}`);
+    console.log(`📡 Stream URL: ${streamInfo.stream_url}\n`);
 
-    console.log('🌐 Baixando imagem do rodapé...');
+    console.log('🌐 Baixando rodapé...');
     const rodapePath = path.join(artefatosDir, 'rodape.png');
     await baixarImagemRodape(rodapeUrl, rodapePath);
 
@@ -117,26 +116,28 @@ function baixarImagemRodape(url, destino) {
     for (const arquivo of arquivosVideo) {
       const duracao = await obterDuracao(arquivo);
       duracaoTotal += duracao;
-      sequencia.push({
-        nome: path.basename(arquivo),
-        duracao: formatarTempo(duracao),
-      });
+      sequencia.push({ nome: path.basename(arquivo), duracao: formatarTempo(duracao) });
     }
 
     sequencia.forEach((item, i) => {
-      console.log(`  ${i + 1}. ${item.nome} — duração: ${item.duracao}`);
+      console.log(`  ${i + 1}. ${item.nome} — ${item.duracao}`);
     });
 
-    console.log(`\n⏳ Duração total estimada da live: ${formatarTempo(duracaoTotal)}\n`);
+    console.log(`\n⏳ Duração total: ${formatarTempo(duracaoTotal)}\n`);
 
     const concatStr = `concat:${arquivosVideo.join('|')}`;
-    const inicioRodape1 = 250;
-    const fimRodape1 = 260;
-    const inicioRodape2 = Math.max(0, duracaoTotal - 240);
-    const fimRodape2 = Math.max(0, duracaoTotal - 230);
-    const enableOverlay = `between(t\\,${inicioRodape1}\\,${fimRodape1})+between(t\\,${inicioRodape2}\\,${fimRodape2})`;
 
-    console.log(`📡 Transmitindo com rodapé visível de 4:10 a 4:20 e novamente faltando 4:00 até 3:50 para o fim.\n`);
+    const inicio1 = 240; // 4 minutos
+    const fim1 = 250;
+
+    const inicio2 = Math.max(0, duracaoTotal - 240); // 4 min antes do fim
+    const fim2 = Math.max(0, duracaoTotal - 230);
+
+    const enableOverlay = `between(t\\,${inicio1}\\,${fim1})+between(t\\,${inicio2}\\,${fim2})`;
+
+    console.log(`📺 Rodapé será exibido entre:`);
+    console.log(`   - 4:00 até 4:10`);
+    console.log(`   - Faltando 4:00 até 3:50 para acabar\n`);
 
     const ffmpeg = spawn('ffmpeg', [
       '-re',
@@ -160,12 +161,25 @@ function baixarImagemRodape(url, destino) {
     });
 
     let tempoDecorrido = 0;
+    let rodapeMostrado1 = false;
+    let rodapeMostrado2 = false;
+
     const intervalo = setInterval(() => {
       tempoDecorrido++;
       const restante = duracaoTotal - tempoDecorrido;
-      if (restante >= 0) {
-        process.stdout.write(`\r⏳ Tempo restante da live: ${formatarTempo(restante)}   `);
+
+      process.stdout.write(`\r⏱️ Tempo transmitido: ${formatarTempo(tempoDecorrido)} — restante: ${formatarTempo(restante)}   `);
+
+      if (!rodapeMostrado1 && tempoDecorrido >= inicio1 && tempoDecorrido < fim1) {
+        console.log(`\n🟩 Rodapé sobreposto no tempo: ${formatarTempo(tempoDecorrido)} (início 4m)`);
+        rodapeMostrado1 = true;
       }
+
+      if (!rodapeMostrado2 && tempoDecorrido >= inicio2 && tempoDecorrido < fim2) {
+        console.log(`\n🟩 Rodapé sobreposto no tempo: ${formatarTempo(tempoDecorrido)} (final -4m)`);
+        rodapeMostrado2 = true;
+      }
+
     }, 1000);
 
     ffmpeg.stdout.on('data', d => process.stdout.write(d.toString()));
@@ -177,11 +191,11 @@ function baixarImagemRodape(url, destino) {
         process.stdout.write('\n');
         limparArtefatos();
         if (code === 0) {
-          console.log('✅ Transmissão finalizada com sucesso!');
+          console.log('✅ Transmissão encerrada com sucesso!');
           resolve();
         } else {
-          console.error(`❌ Falha na transmissão. Código: ${code}`);
-          reject(new Error(`FFmpeg falhou com código ${code}`));
+          console.error(`❌ Erro na transmissão. Código: ${code}`);
+          reject(new Error(`FFmpeg terminou com erro.`));
         }
       });
     });
