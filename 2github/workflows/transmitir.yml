@@ -79,6 +79,27 @@ jobs:
           npm install mime-types
 
       - name: 🚀 Iniciar Transmissão com transmitir.js
+        id: transmitir
         run: |
           echo "🚀 Transmitindo com transmitir.js..."
           node transmitir.js
+
+      - name: 🗑️ Excluir artefato após transmissão bem-sucedida
+        if: success() && steps.transmitir.outcome == 'success'
+        env:
+          PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
+        run: |
+          URL="${{ steps.corrigir_url.outputs.url_corrigida }}"
+          echo "🧪 Extraindo ID do artefato..."
+          ID=$(echo "$URL" | grep -oP 'artifacts/\K[0-9]+')
+
+          if [[ -n "$ID" ]]; then
+            echo "🗑️ Deletando artefato ID: $ID de Miraplay2025/Live..."
+            curl -X DELETE \
+              -H "Authorization: Bearer $PERSONAL_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/Miraplay2025/Live/actions/artifacts/$ID" \
+              -w "\n✅ Artefato excluído com status: %{http_code}\n"
+          else
+            echo "⚠️ Não foi possível extrair o ID do artefato. Nenhuma exclusão feita."
+          fi
