@@ -1,0 +1,84 @@
+name: Transmitir
+
+on:
+  workflow_dispatch:
+    inputs:
+      artefato_url:
+        description: 'URL do artefato (API ou GitHub)'
+        required: true
+
+jobs:
+  baixar_e_transmitir:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🔁 Clonar repositório
+        uses: actions/checkout@v4
+
+      - name: 🛠️ Corrigir URL se necessário
+        id: corrigir_url
+        run: |
+          URL="${{ github.event.inputs.artefato_url }}"
+          if [[ "$URL" == https://github.com/* ]]; then
+            echo "🔧 Corrigindo URL para formato da API..."
+            API_URL=$(echo "$URL" | sed -E 's|https://github\.com/([^/]+)/([^/]+)/actions/runs/[0-9]+/artifacts/([0-9]+)|https://api.github.com/repos/\1/\2/actions/artifacts/\3/zip|')
+            echo "url_corrigida=$API_URL" >> "$GITHUB_OUTPUT"
+            echo "✅ URL corrigida: $API_URL"
+          else
+            echo "✅ URL já está no formato da API: $URL"
+            echo "url_corrigida=$URL" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 📥 Baixar artefato zipado
+        run: |
+          URL="${{ steps.corrigir_url.outputs.url_corrigida }}"
+          echo "🔗 Baixando artefato de: $URL"
+          curl -L \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Accept: application/zip" \
+            "$URL" \
+            -o artefato.zip
+
+      - name: 📦 Descompactar artefato corretamente
+        run: |
+          mkdir -p artefatos
+          unzip artefato.zip -d artefatos || {
+            echo "❌ Erro ao descompactar. Verifique se o link é válido ou se o artefato expirou."
+            exit 1
+          }
+
+      - name: 📂 Verificar estrutura do artefato
+        run: |
+          echo "📁 Estrutura final do artefato extraído:"
+          find artefatos -type f
+
+          echo "🧾 Verificando arquivos essenciais:"
+          for file in ts_paths.json stream_info.json; do
+            if [[ -f "artefatos/$file" ]]; then
+              echo "✅ $file encontrado."
+            else
+              echo "❌ $file NÃO encontrado!"
+              exit 1
+            fi
+          done
+
+      - name: 🧰 Instalar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 🎬 Instalar FFmpeg
+        run: |
+          sudo apt update
+          sudo apt install -y ffmpeg
+
+      - name: 📦 Instalar dependências do projeto
+        run: |
+          echo '{}' > package.json
+          npm install mime-types
+
+      - name: 🚀 Iniciar Transmissão com transmitir.js
+        run: |
+          echo "🚀 Transmitindo com transmitir.js..."
+          node transmitir.js
