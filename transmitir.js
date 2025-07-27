@@ -2,7 +2,7 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 const path = require('path');
 const https = require('https');
-const mime = require('mime-types'); // usar para checar tipo de arquivo pelo nome
+const mime = require('mime-types');
 
 const artefatosDir = path.resolve('artefatos');
 const tsListPath = path.join(artefatosDir, 'ts_paths.json');
@@ -90,8 +90,19 @@ function baixarImagemRodape(url, destino) {
       throw new Error('Arquivos essenciais não encontrados: ts_paths.json ou stream_info.json');
     }
 
-    const tsList = JSON.parse(fs.readFileSync(tsListPath, 'utf-8'));
+    const tsListRaw = JSON.parse(fs.readFileSync(tsListPath, 'utf-8'));
     const streamInfo = JSON.parse(fs.readFileSync(streamInfoPath, 'utf-8'));
+
+    // Corrigir caminhos inválidos
+    const arquivosDisponiveis = new Set(fs.readdirSync(artefatosDir));
+    const arquivosVideo = tsListRaw
+      .map(f => path.basename(f)) // Ignora subpastas ou caminhos errados
+      .filter(f => f.toLowerCase().endsWith('.ts') && arquivosDisponiveis.has(f))
+      .map(f => path.join(artefatosDir, f));
+
+    if (arquivosVideo.length === 0) {
+      throw new Error('❌ Nenhum arquivo .ts válido encontrado para transmitir.');
+    }
 
     console.log(`🆔 ID da live: ${streamInfo.id}`);
     console.log(`📡 URL da stream: ${streamInfo.stream_url}\n`);
@@ -100,14 +111,11 @@ function baixarImagemRodape(url, destino) {
     const rodapePath = path.join(artefatosDir, 'rodape.png');
     await baixarImagemRodape(rodapeUrl, rodapePath);
 
-    const arquivosVideo = tsList.filter(f => f.toLowerCase().endsWith('.ts'));
-
     let duracaoTotal = 0;
     const sequencia = [];
 
     for (const arquivo of arquivosVideo) {
-      const caminho = path.isAbsolute(arquivo) ? arquivo : path.join(artefatosDir, arquivo);
-      const duracao = await obterDuracao(caminho);
+      const duracao = await obterDuracao(arquivo);
       duracaoTotal += duracao;
       sequencia.push({
         nome: path.basename(arquivo),
@@ -121,8 +129,7 @@ function baixarImagemRodape(url, destino) {
 
     console.log(`\n⏳ Duração total estimada da live: ${formatarTempo(duracaoTotal)}\n`);
 
-    // Exibir rodapé em 2 momentos específicos
-    const concatStr = `concat:${arquivosVideo.map(f => path.isAbsolute(f) ? f : path.join(artefatosDir, f)).join('|')}`;
+    const concatStr = `concat:${arquivosVideo.join('|')}`;
     const inicioRodape1 = 250;
     const fimRodape1 = 260;
     const inicioRodape2 = Math.max(0, duracaoTotal - 240);
