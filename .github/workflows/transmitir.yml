@@ -76,7 +76,7 @@ jobs:
       - name: 📦 Instalar dependências do projeto
         run: |
           echo '{}' > package.json
-          npm install
+          npm install mime-types
 
       - name: 🚀 Iniciar Transmissão com transmitir.js
         id: transmitir
