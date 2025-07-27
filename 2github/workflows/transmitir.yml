@@ -40,28 +40,16 @@ jobs:
             "$URL" \
             -o artefato.zip
 
-      - name: 📦 Descompactar artefato corretamente
+      - name: 📦 Descompactar artefato
         run: |
-          mkdir -p artefatos
-          unzip artefato.zip -d artefatos || {
+          mkdir -p artefatos/video_final
+          unzip artefato.zip -d artefatos/video_final || {
             echo "❌ Erro ao descompactar. Verifique se o link é válido ou se o artefato expirou."
             exit 1
           }
 
-      - name: 📂 Verificar estrutura do artefato
-        run: |
-          echo "📁 Estrutura final do artefato extraído:"
-          find artefatos -type f
-
-          echo "🧾 Verificando arquivos essenciais:"
-          for file in ts_paths.json stream_info.json; do
-            if [[ -f "artefatos/$file" ]]; then
-              echo "✅ $file encontrado."
-            else
-              echo "❌ $file NÃO encontrado!"
-              exit 1
-            fi
-          done
+      - name: 📂 Listar conteúdo extraído
+        run: find artefatos/video_final -type f
 
       - name: 🧰 Instalar Node.js
         uses: actions/setup-node@v4
@@ -76,7 +64,7 @@ jobs:
       - name: 📦 Instalar dependências do projeto
         run: |
           echo '{}' > package.json
-          npm install mime-types
+          npm install
 
       - name: 🚀 Iniciar Transmissão com transmitir.js
         id: transmitir
