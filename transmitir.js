@@ -64,27 +64,35 @@ async function notificarStatus(status, message = null) {
 
   console.log(`🌐 Acessando o servidor com Puppeteer: ${STATUS_ENDPOINT}`);
 
+  let cookies = [];
+
   try {
     const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox'] });
     const page = await browser.newPage();
 
-    await page.goto(STATUS_ENDPOINT, { waitUntil: 'networkidle0', timeout: 30000 });
+    await page.goto(STATUS_ENDPOINT, { waitUntil: 'networkidle2', timeout: 30000 });
 
+    cookies = await page.cookies();
     console.log('✅ Página carregada e JavaScript executado com sucesso.');
     await browser.close();
   } catch (err) {
     console.warn(`⚠️ Erro ao carregar a página com Puppeteer: ${err.message}`);
   }
 
+  const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+
   try {
     const payload = { id: streamInfo.id, status };
     if (message) payload.message = message;
 
-    console.log(`📡 Enviando notificação "${status}" para o servidor...`);
+    console.log(`📡 Enviando notificação "${status}" para o servidor com cookie...`);
 
     const response = await fetch(STATUS_ENDPOINT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Cookie': cookieHeader
+      },
       body: JSON.stringify(payload)
     });
 
