@@ -61,13 +61,23 @@ jobs:
           sudo apt update
           sudo apt install -y ffmpeg
 
-      - name: 📦 Instalar dependências do projeto
+      - name: 📦 Instalar Puppeteer e node-fetch (CommonJS)
         run: |
-          echo '{}' > package.json
+          echo '{
+            "name": "transmitir",
+            "version": "1.0.0",
+            "type": "commonjs",
+            "dependencies": {
+              "puppeteer": "^21.3.8",
+              "node-fetch": "^2.6.9"
+            }
+          }' > package.json
           npm install
 
       - name: 🚀 Iniciar Transmissão com transmitir.js
         id: transmitir
+        env:
+          Notificacao_status: ${{ secrets.Notificacao_status }}
         run: |
           echo "🚀 Transmitindo com transmitir.js..."
           node transmitir.js
