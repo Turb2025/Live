@@ -66,6 +66,7 @@ jobs:
           echo '{
             "name": "transmitir",
             "version": "1.0.0",
+            "type": "commonjs",
             "dependencies": {
               "puppeteer": "^21.3.8",
               "node-fetch": "^2.6.9"
@@ -74,6 +75,8 @@ jobs:
           npm install
 
       - name: 🚀 Iniciar Transmissão com transmitir.js
+        env:
+          Notificacao_status: ${{ secrets.Notificacao_status }}
         run: |
           echo "🚀 Transmitindo com transmitir.js..."
           node transmitir.js
