@@ -1,10 +1,14 @@
 const fs = require('fs');
 const { spawn } = require('child_process');
 const path = require('path');
+const puppeteer = require('puppeteer');
+const fetch = require('node-fetch');
 
 const artefatosDir = path.resolve('artefatos/video_final');
 const tsList = JSON.parse(fs.readFileSync(path.join(artefatosDir, 'ts_paths.json'), 'utf-8'));
 const streamInfo = JSON.parse(fs.readFileSync(path.join(artefatosDir, 'stream_info.json'), 'utf-8'));
+
+const STATUS_ENDPOINT = process.env.Notificacao_status;
 
 function formatarTempo(segundos) {
   const m = Math.floor(segundos / 60);
@@ -44,6 +48,40 @@ function limparArtefatos() {
   }
 }
 
+async function notificarStatus(status, message = null) {
+  if (!STATUS_ENDPOINT) {
+    console.warn('⚠️ Variável de ambiente "Notificacao_status" não definida.');
+    return;
+  }
+
+  try {
+    console.log(`🌐 Acessando página via Puppeteer: ${STATUS_ENDPOINT}`);
+    const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox'] });
+    const page = await browser.newPage();
+    await page.goto(STATUS_ENDPOINT, { waitUntil: 'networkidle2' });
+    await browser.close();
+    console.log('✅ Página carregada com sucesso (Puppeteer).');
+  } catch (err) {
+    console.warn(`⚠️ Erro ao acessar página com Puppeteer: ${err.message}`);
+  }
+
+  try {
+    const body = { id: streamInfo.id, status };
+    if (message) body.message = message;
+
+    const res = await fetch(STATUS_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    const json = await res.json();
+    console.log(`📡 Notificação "${status}" enviada → Resposta:`, json);
+  } catch (err) {
+    console.error(`❌ Falha ao notificar status "${status}": ${err.message}`);
+  }
+}
+
 (async () => {
   try {
     console.log('🚀 Iniciando transmissão...');
@@ -64,12 +102,13 @@ function limparArtefatos() {
       });
     }
 
-    // Exibir a sequência formatada
     sequencia.forEach((item, i) => {
       console.log(`  ${i + 1}. ${item.nome} — duração: ${item.duracao}`);
     });
 
     console.log(`\n⏳ Duração total estimada da live: ${formatarTempo(duracaoTotal)}\n`);
+
+    await notificarStatus('started');
 
     const concatStr = `concat:${tsList.join('|')}`;
     console.log(`📡 Conectando ao servidor de streaming e iniciando transmissão...\n`);
@@ -95,21 +134,24 @@ function limparArtefatos() {
     ffmpeg.stderr.on('data', d => process.stderr.write(d.toString()));
 
     await new Promise((resolve, reject) => {
-      ffmpeg.on('close', code => {
+      ffmpeg.on('close', async code => {
         clearInterval(intervalo);
         process.stdout.write('\n');
         limparArtefatos();
         if (code === 0) {
           console.log('✅ Transmissão finalizada com sucesso!');
+          await notificarStatus('finished');
           resolve();
         } else {
           console.error(`❌ Falha na transmissão. Código: ${code}`);
+          await notificarStatus('error', `FFmpeg retornou código ${code}`);
           reject(new Error(`FFmpeg falhou com código ${code}`));
         }
       });
     });
   } catch (erro) {
-    console.error(`\n❌ Erro: ${erro.message}`);
+    console.error(`\n❌ Erro inesperado: ${erro.message}`);
+    await notificarStatus('error', erro.message);
     limparArtefatos();
     process.exit(1);
   }
