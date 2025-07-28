@@ -4,9 +4,20 @@ const path = require('path');
 const puppeteer = require('puppeteer');
 const fetch = require('node-fetch');
 
+// Diretório onde os arquivos .ts e .json estão
 const artefatosDir = path.resolve('artefatos/video_final');
-const tsList = JSON.parse(fs.readFileSync(path.join(artefatosDir, 'ts_paths.json'), 'utf-8'));
-const streamInfo = JSON.parse(fs.readFileSync(path.join(artefatosDir, 'stream_info.json'), 'utf-8'));
+
+const tsListPath = path.join(artefatosDir, 'ts_paths.json');
+const streamInfoPath = path.join(artefatosDir, 'stream_info.json');
+
+// Verifica se os arquivos existem antes de continuar
+if (!fs.existsSync(tsListPath) || !fs.existsSync(streamInfoPath)) {
+  console.error('❌ Arquivos ts_paths.json ou stream_info.json não encontrados.');
+  process.exit(1);
+}
+
+const tsList = JSON.parse(fs.readFileSync(tsListPath, 'utf-8'));
+const streamInfo = JSON.parse(fs.readFileSync(streamInfoPath, 'utf-8'));
 
 const STATUS_ENDPOINT = process.env.Notificacao_status;
 
@@ -24,6 +35,7 @@ function obterDuracao(video) {
       '-of', 'default=noprint_wrappers=1:nokey=1',
       video
     ]);
+
     let output = '';
     ffprobe.stdout.on('data', chunk => output += chunk.toString());
     ffprobe.on('close', code => {
@@ -54,6 +66,7 @@ async function notificarStatus(status, message = null) {
     return;
   }
 
+  // Acesso via navegador headless (GET)
   try {
     console.log(`🌐 Acessando página via Puppeteer: ${STATUS_ENDPOINT}`);
     const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox'] });
@@ -65,6 +78,7 @@ async function notificarStatus(status, message = null) {
     console.warn(`⚠️ Erro ao acessar página com Puppeteer: ${err.message}`);
   }
 
+  // Envio de notificação via POST
   try {
     const body = { id: streamInfo.id, status };
     if (message) body.message = message;
@@ -75,7 +89,7 @@ async function notificarStatus(status, message = null) {
       body: JSON.stringify(body)
     });
 
-    const json = await res.json();
+    const json = await res.json().catch(() => ({}));
     console.log(`📡 Notificação "${status}" enviada → Resposta:`, json);
   } catch (err) {
     console.error(`❌ Falha ao notificar status "${status}": ${err.message}`);
