@@ -4,13 +4,10 @@ const path = require('path');
 const puppeteer = require('puppeteer');
 const fetch = require('node-fetch');
 
-// Diretório onde os arquivos .ts e .json estão
 const artefatosDir = path.resolve('artefatos/video_final');
-
 const tsListPath = path.join(artefatosDir, 'ts_paths.json');
 const streamInfoPath = path.join(artefatosDir, 'stream_info.json');
 
-// Verifica se os arquivos existem antes de continuar
 if (!fs.existsSync(tsListPath) || !fs.existsSync(streamInfoPath)) {
   console.error('❌ Arquivos ts_paths.json ou stream_info.json não encontrados.');
   process.exit(1);
@@ -18,7 +15,6 @@ if (!fs.existsSync(tsListPath) || !fs.existsSync(streamInfoPath)) {
 
 const tsList = JSON.parse(fs.readFileSync(tsListPath, 'utf-8'));
 const streamInfo = JSON.parse(fs.readFileSync(streamInfoPath, 'utf-8'));
-
 const STATUS_ENDPOINT = process.env.Notificacao_status;
 
 function formatarTempo(segundos) {
@@ -66,33 +62,43 @@ async function notificarStatus(status, message = null) {
     return;
   }
 
-  // Acesso via navegador headless (GET)
+  console.log(`🌐 Acessando o servidor com Puppeteer: ${STATUS_ENDPOINT}`);
+
   try {
-    console.log(`🌐 Acessando página via Puppeteer: ${STATUS_ENDPOINT}`);
     const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox'] });
     const page = await browser.newPage();
-    await page.goto(STATUS_ENDPOINT, { waitUntil: 'networkidle2' });
+
+    await page.goto(STATUS_ENDPOINT, { waitUntil: 'networkidle0', timeout: 30000 });
+
+    console.log('✅ Página carregada e JavaScript executado com sucesso.');
     await browser.close();
-    console.log('✅ Página carregada com sucesso (Puppeteer).');
   } catch (err) {
-    console.warn(`⚠️ Erro ao acessar página com Puppeteer: ${err.message}`);
+    console.warn(`⚠️ Erro ao carregar a página com Puppeteer: ${err.message}`);
   }
 
-  // Envio de notificação via POST
   try {
-    const body = { id: streamInfo.id, status };
-    if (message) body.message = message;
+    const payload = { id: streamInfo.id, status };
+    if (message) payload.message = message;
 
-    const res = await fetch(STATUS_ENDPOINT, {
+    console.log(`📡 Enviando notificação "${status}" para o servidor...`);
+
+    const response = await fetch(STATUS_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify(payload)
     });
 
-    const json = await res.json().catch(() => ({}));
-    console.log(`📡 Notificação "${status}" enviada → Resposta:`, json);
+    const responseText = await response.text();
+
+    if (response.ok) {
+      console.log('📥 Resposta do servidor (sucesso):');
+    } else {
+      console.warn(`⚠️ Resposta do servidor (erro HTTP ${response.status}):`);
+    }
+
+    console.log(responseText);
   } catch (err) {
-    console.error(`❌ Falha ao notificar status "${status}": ${err.message}`);
+    console.error(`❌ Falha ao notificar o servidor: ${err.message}`);
   }
 }
 
@@ -122,8 +128,6 @@ async function notificarStatus(status, message = null) {
 
     console.log(`\n⏳ Duração total estimada da live: ${formatarTempo(duracaoTotal)}\n`);
 
-    await notificarStatus('started');
-
     const concatStr = `concat:${tsList.join('|')}`;
     console.log(`📡 Conectando ao servidor de streaming e iniciando transmissão...\n`);
 
@@ -134,6 +138,11 @@ async function notificarStatus(status, message = null) {
       '-f', 'flv',
       streamInfo.stream_url
     ]);
+
+    // Notifica início da live após 5 segundos
+    setTimeout(() => {
+      notificarStatus('started');
+    }, 5000);
 
     let tempoDecorrido = 0;
     const intervalo = setInterval(() => {
