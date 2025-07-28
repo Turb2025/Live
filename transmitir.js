@@ -67,10 +67,18 @@ async function notificarStatus(status, message = null) {
   let cookies = [];
 
   try {
-    const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox'] });
+    const browser = await puppeteer.launch({
+      headless: 'new',
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+
     const page = await browser.newPage();
 
-    await page.goto(STATUS_ENDPOINT, { waitUntil: 'networkidle2', timeout: 30000 });
+    console.log(`🌐 Acessando: ${STATUS_ENDPOINT}`);
+    await page.goto(STATUS_ENDPOINT, { waitUntil: 'networkidle2', timeout: 0 });
+
+    console.log("⏳ Aguardando 5 segundos para carregar todo o conteúdo dinâmico...");
+    await new Promise(resolve => setTimeout(resolve, 5000));
 
     cookies = await page.cookies();
     console.log('✅ Página carregada e JavaScript executado com sucesso.');
