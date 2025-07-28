@@ -61,12 +61,11 @@ jobs:
           sudo apt update
           sudo apt install -y ffmpeg
 
-      - name: 📦 Instalar Puppeteer e node-fetch
+      - name: 📦 Instalar Puppeteer e node-fetch (CommonJS)
         run: |
           echo '{
             "name": "transmitir",
             "version": "1.0.0",
-            "type": "module",
             "dependencies": {
               "puppeteer": "^21.3.8",
               "node-fetch": "^2.6.9"
