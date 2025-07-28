@@ -1,21 +1,14 @@
+// transmitir.js
 const fs = require('fs');
 const { spawn } = require('child_process');
 const path = require('path');
 const puppeteer = require('puppeteer');
-const fetch = require('node-fetch');
 
 const artefatosDir = path.resolve('artefatos/video_final');
-const tsListPath = path.join(artefatosDir, 'ts_paths.json');
-const streamInfoPath = path.join(artefatosDir, 'stream_info.json');
+const tsList = JSON.parse(fs.readFileSync(path.join(artefatosDir, 'ts_paths.json'), 'utf-8'));
+const streamInfo = JSON.parse(fs.readFileSync(path.join(artefatosDir, 'stream_info.json'), 'utf-8'));
 
-if (!fs.existsSync(tsListPath) || !fs.existsSync(streamInfoPath)) {
-  console.error('❌ Arquivos ts_paths.json ou stream_info.json não encontrados.');
-  process.exit(1);
-}
-
-const tsList = JSON.parse(fs.readFileSync(tsListPath, 'utf-8'));
-const streamInfo = JSON.parse(fs.readFileSync(streamInfoPath, 'utf-8'));
-const STATUS_ENDPOINT = process.env.Notificacao_status;
+const statusUrl = process.env.Notificacao_status;
 
 function formatarTempo(segundos) {
   const m = Math.floor(segundos / 60);
@@ -31,7 +24,6 @@ function obterDuracao(video) {
       '-of', 'default=noprint_wrappers=1:nokey=1',
       video
     ]);
-
     let output = '';
     ffprobe.stdout.on('data', chunk => output += chunk.toString());
     ffprobe.on('close', code => {
@@ -56,65 +48,37 @@ function limparArtefatos() {
   }
 }
 
-async function notificarStatus(status, message = null) {
-  if (!STATUS_ENDPOINT) {
-    console.warn('⚠️ Variável de ambiente "Notificacao_status" não definida.');
+async function notificarStatus(status, id) {
+  if (!statusUrl) {
+    console.warn('⚠️ Notificacao_status não definido nas variáveis de ambiente.');
     return;
   }
 
-  console.log(`🌐 Acessando o servidor com Puppeteer: ${STATUS_ENDPOINT}`);
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  });
 
-  let cookies = [];
+  const page = await browser.newPage();
 
   try {
-    const browser = await puppeteer.launch({
-      headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+    await page.goto(statusUrl, { waitUntil: 'networkidle2' });
+    await new Promise(r => setTimeout(r, 2000));
 
-    const page = await browser.newPage();
+    const response = await page.evaluate(async ({ status, id, statusUrl }) => {
+      const res = await fetch(statusUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, id })
+      });
+      return await res.text();
+    }, { status, id, statusUrl });
 
-    console.log(`🌐 Acessando: ${STATUS_ENDPOINT}`);
-    await page.goto(STATUS_ENDPOINT, { waitUntil: 'networkidle2', timeout: 0 });
-
-    console.log("⏳ Aguardando 5 segundos para carregar todo o conteúdo dinâmico...");
-    await new Promise(resolve => setTimeout(resolve, 5000));
-
-    cookies = await page.cookies();
-    console.log('✅ Página carregada e JavaScript executado com sucesso.');
+    console.log(`📡 Notificação enviada: status="${status}", id="${id}" → Resposta: ${response}`);
+  } catch (err) {
+    console.error(`❌ Falha ao notificar status "${status}" - ${err.message}`);
+  } finally {
     await browser.close();
-  } catch (err) {
-    console.warn(`⚠️ Erro ao carregar a página com Puppeteer: ${err.message}`);
-  }
-
-  const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-
-  try {
-    const payload = { id: streamInfo.id, status };
-    if (message) payload.message = message;
-
-    console.log(`📡 Enviando notificação "${status}" para o servidor com cookie...`);
-
-    const response = await fetch(STATUS_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cookie': cookieHeader
-      },
-      body: JSON.stringify(payload)
-    });
-
-    const responseText = await response.text();
-
-    if (response.ok) {
-      console.log('📥 Resposta do servidor (sucesso):');
-    } else {
-      console.warn(`⚠️ Resposta do servidor (erro HTTP ${response.status}):`);
-    }
-
-    console.log(responseText);
-  } catch (err) {
-    console.error(`❌ Falha ao notificar o servidor: ${err.message}`);
   }
 }
 
@@ -155,9 +119,9 @@ async function notificarStatus(status, message = null) {
       streamInfo.stream_url
     ]);
 
-    // Notifica início da live após 5 segundos
+    // ⏱️ Notificar "started" após 5 segundos
     setTimeout(() => {
-      notificarStatus('started');
+      notificarStatus('started', streamInfo.id);
     }, 5000);
 
     let tempoDecorrido = 0;
@@ -173,24 +137,25 @@ async function notificarStatus(status, message = null) {
     ffmpeg.stderr.on('data', d => process.stderr.write(d.toString()));
 
     await new Promise((resolve, reject) => {
-      ffmpeg.on('close', async code => {
+      ffmpeg.on('close', code => {
         clearInterval(intervalo);
         process.stdout.write('\n');
         limparArtefatos();
         if (code === 0) {
           console.log('✅ Transmissão finalizada com sucesso!');
-          await notificarStatus('finished');
+          notificarStatus('finished', streamInfo.id);
           resolve();
         } else {
           console.error(`❌ Falha na transmissão. Código: ${code}`);
-          await notificarStatus('error', `FFmpeg retornou código ${code}`);
+          notificarStatus('error', streamInfo.id);
           reject(new Error(`FFmpeg falhou com código ${code}`));
         }
       });
     });
+
   } catch (erro) {
-    console.error(`\n❌ Erro inesperado: ${erro.message}`);
-    await notificarStatus('error', erro.message);
+    console.error(`\n❌ Erro: ${erro.message}`);
+    await notificarStatus('error', streamInfo.id);
     limparArtefatos();
     process.exit(1);
   }
