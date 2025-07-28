@@ -61,9 +61,17 @@ jobs:
           sudo apt update
           sudo apt install -y ffmpeg
 
-      - name: 📦 Instalar dependências do projeto
+      - name: 📦 Instalar Puppeteer e node-fetch
         run: |
-          echo '{}' > package.json
+          echo '{
+            "name": "transmitir",
+            "version": "1.0.0",
+            "type": "module",
+            "dependencies": {
+              "puppeteer": "^21.3.8",
+              "node-fetch": "^2.6.9"
+            }
+          }' > package.json
           npm install
 
       - name: 🚀 Iniciar Transmissão com transmitir.js
