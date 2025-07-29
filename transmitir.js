@@ -1,4 +1,3 @@
-// transmitir.js
 const fs = require('fs');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -86,9 +85,19 @@ async function notificarStatus(status, id) {
   try {
     console.log('🚀 Iniciando transmissão...');
     console.log(`🆔 ID da live: ${streamInfo.id}`);
-    console.log(`📡 URL da stream: ${streamInfo.stream_url}\n`);
 
-    console.log('📋 Sequência dos vídeos que serão transmitidos:\n');
+    const destinos = Array.isArray(streamInfo.stream_urls)
+      ? streamInfo.stream_urls
+      : [streamInfo.stream_url];
+
+    if (destinos.length === 0) {
+      throw new Error('Nenhuma URL de stream foi fornecida.');
+    }
+
+    console.log('📡 Destinos de transmissão:');
+    destinos.forEach((url, i) => console.log(`  ${i + 1}. ${url}`));
+
+    console.log('\n📋 Sequência dos vídeos que serão transmitidos:\n');
 
     let duracaoTotal = 0;
     const sequencia = [];
@@ -109,17 +118,21 @@ async function notificarStatus(status, id) {
     console.log(`\n⏳ Duração total estimada da live: ${formatarTempo(duracaoTotal)}\n`);
 
     const concatStr = `concat:${tsList.join('|')}`;
-    console.log(`📡 Conectando ao servidor de streaming e iniciando transmissão...\n`);
+    const teeOutputs = destinos.map(url => `[f=flv:onfail=ignore]${url}`).join('|');
 
-    const ffmpeg = spawn('ffmpeg', [
+    const ffmpegArgs = [
       '-re',
       '-i', concatStr,
       '-c', 'copy',
-      '-f', 'flv',
-      streamInfo.stream_url
-    ]);
+      '-f', 'tee',
+      teeOutputs
+    ];
 
-    // ⏱️ Notificar "started" após 5 segundos
+    console.log('▶️ Comando FFmpeg:');
+    console.log(`ffmpeg ${ffmpegArgs.join(' ')}`);
+
+    const ffmpeg = spawn('ffmpeg', ffmpegArgs);
+
     setTimeout(() => {
       notificarStatus('started', streamInfo.id);
     }, 5000);
@@ -133,22 +146,32 @@ async function notificarStatus(status, id) {
       }
     }, 1000);
 
-    ffmpeg.stdout.on('data', d => process.stdout.write(d.toString()));
-    ffmpeg.stderr.on('data', d => process.stderr.write(d.toString()));
+    let stderrLogs = '';
+    ffmpeg.stderr.on('data', d => {
+      const output = d.toString();
+      stderrLogs += output;
+      process.stderr.write(output);
+    });
 
     await new Promise((resolve, reject) => {
       ffmpeg.on('close', code => {
         clearInterval(intervalo);
         process.stdout.write('\n');
-        limparArtefatos();
-        if (code === 0) {
-          console.log('✅ Transmissão finalizada com sucesso!');
+
+        const streamsSucesso = destinos.filter(url =>
+          !stderrLogs.includes(url) || !stderrLogs.includes('Server error')
+        );
+
+        if (streamsSucesso.length > 0) {
+          console.log(`✅ Transmissão concluída com sucesso para ${streamsSucesso.length} destino(s).`);
           notificarStatus('finished', streamInfo.id);
+          limparArtefatos();
           resolve();
         } else {
-          console.error(`❌ Falha na transmissão. Código: ${code}`);
+          console.error(`❌ Todos os destinos falharam. Transmissão não foi realizada.`);
           notificarStatus('error', streamInfo.id);
-          reject(new Error(`FFmpeg falhou com código ${code}`));
+          limparArtefatos();
+          reject(new Error('Nenhuma das URLs conseguiu iniciar a transmissão.'));
         }
       });
     });
