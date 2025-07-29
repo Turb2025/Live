@@ -6,6 +6,9 @@ on:
       artefato_url:
         description: 'URL do artefato (API ou GitHub)'
         required: true
+      url_stream_extra:
+        description: 'URL extra de stream (ex: YouTube RTMP)'
+        required: true
 
 jobs:
   baixar_e_transmitir:
@@ -48,6 +51,19 @@ jobs:
             exit 1
           }
 
+      - name: ➕ Adicionar URL extra ao stream_info.json
+        run: |
+          EXTRA_URL="${{ github.event.inputs.url_stream_extra }}"
+          JSON_FILE="artefatos/video_final/stream_info.json"
+          if [ ! -f "$JSON_FILE" ]; then
+            echo "❌ stream_info.json não encontrado!"
+            exit 1
+          fi
+
+          echo "🔗 Inserindo nova URL de stream: $EXTRA_URL"
+          jq --arg newUrl "$EXTRA_URL" '.stream_urls += [$newUrl]' "$JSON_FILE" > tmp.json && mv tmp.json "$JSON_FILE"
+          cat "$JSON_FILE"
+
       - name: 📂 Listar conteúdo extraído
         run: find artefatos/video_final -type f
 
@@ -61,12 +77,11 @@ jobs:
           sudo apt update
           sudo apt install -y ffmpeg
 
-      - name: 📦 Instalar Puppeteer e node-fetch (CommonJS)
+      - name: 📦 Instalar Puppeteer e node-fetch
         run: |
           echo '{
             "name": "transmitir",
             "version": "1.0.0",
-            "type": "commonjs",
             "dependencies": {
               "puppeteer": "^21.3.8",
               "node-fetch": "^2.6.9"
