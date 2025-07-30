@@ -94,7 +94,7 @@ async function notificarStatus(status, id) {
       throw new Error('Nenhuma URL de stream foi fornecida.');
     }
 
-    console.log('📡 Destinos de transmissão:');
+    console.log('📡 Destinos de transmissão (simultâneos):');
     destinos.forEach((url, i) => console.log(`  ${i + 1}. ${url}`));
 
     console.log('\n📋 Sequência dos vídeos que serão transmitidos:\n');
@@ -117,40 +117,67 @@ async function notificarStatus(status, id) {
 
     console.log(`\n⏳ Duração total estimada da live: ${formatarTempo(duracaoTotal)}\n`);
 
-    // Cria o filtro concat para ffmpeg, lista os inputs separados
-    const filterComplex = tsList
-      .map((_, i) => `[${i}:v:0][${i}:a:0]`)
-      .join('') + `concat=n=${tsList.length}:v=1:a=1[outv][outa]`;
+    const concatStr = `concat:${tsList.join('|')}`;
 
-    // Monta os argumentos do ffmpeg com múltiplos inputs (cada ts um -i)
-    const ffmpegArgs = [];
+    // Construção do parâmetro tee para múltiplos destinos com onfail=ignore para cada saída
+    const teeOutputs = destinos.map(url => `[f=flv:onfail=ignore]${url}`).join('|');
 
-    tsList.forEach(tsFile => {
-      ffmpegArgs.push('-i', tsFile);
-    });
-
-    ffmpegArgs.push(
-      '-filter_complex', filterComplex,
-      '-map', '[outv]',
-      '-map', '[outa]',
-      '-c:v', 'libx264',
-      '-preset', 'veryfast',
-      '-c:a', 'aac',
-      '-ar', '44100',
-      '-b:a', '128k',
+    const ffmpegArgs = [
+      '-re',
+      '-i', concatStr,
+      '-c', 'copy',
       '-f', 'tee',
-      destinos.map(url => `[f=flv:onfail=ignore]${url}`).join('|')
-    );
+      teeOutputs
+    ];
 
-    console.log('▶️ Comando FFmpeg:');
+    console.log('▶️ Comando FFmpeg completo:');
     console.log(`ffmpeg ${ffmpegArgs.join(' ')}`);
 
+    // Inicia o processo ffmpeg
     const ffmpeg = spawn('ffmpeg', ffmpegArgs);
 
+    // Variáveis para controlar status das URLs
+    const statusPorUrl = {};
+    destinos.forEach(url => statusPorUrl[url] = { started: false, erro: false });
+
+    // Função auxiliar para tentar detectar logs de erro ou sucesso por URL
+    function analisarLogParaUrl(logLine) {
+      destinos.forEach(url => {
+        if (logLine.includes(url)) {
+          // Detecta erro comum do servidor ou desconexão
+          if (/Server returned 5\d\d|Connection refused|Failed to connect|404 Not Found/i.test(logLine)) {
+            if (!statusPorUrl[url].erro) {
+              console.error(`❌ Erro detectado no stream: ${url} → ${logLine.trim()}`);
+              statusPorUrl[url].erro = true;
+            }
+          } else if (/Press \[q\] to stop/i.test(logLine) || /frame=/i.test(logLine)) {
+            // Assumindo que ffmpeg indica início da transmissão
+            if (!statusPorUrl[url].started && !statusPorUrl[url].erro) {
+              console.log(`✅ Transmissão iniciada com sucesso para: ${url}`);
+              statusPorUrl[url].started = true;
+            }
+          }
+        }
+      });
+    }
+
+    // Observa saída stderr do ffmpeg para detectar erros/sucessos
+    ffmpeg.stderr.on('data', data => {
+      const lines = data.toString().split('\n');
+      lines.forEach(line => {
+        if (line.trim()) {
+          process.stderr.write(line + '\n');
+          analisarLogParaUrl(line);
+        }
+      });
+    });
+
+    // Notificação que live iniciou após 5 segundos
     setTimeout(() => {
       notificarStatus('started', streamInfo.id);
     }, 5000);
 
+    // Contador de tempo restante da live
     let tempoDecorrido = 0;
     const intervalo = setInterval(() => {
       tempoDecorrido++;
@@ -160,28 +187,32 @@ async function notificarStatus(status, id) {
       }
     }, 1000);
 
-    let stderrLogs = '';
-    ffmpeg.stderr.on('data', d => {
-      const output = d.toString();
-      stderrLogs += output;
-      process.stderr.write(output);
-    });
-
+    // Espera ffmpeg finalizar
     await new Promise((resolve, reject) => {
       ffmpeg.on('close', code => {
         clearInterval(intervalo);
         process.stdout.write('\n');
 
-        if (code === 0) {
-          console.log(`✅ Transmissão concluída com sucesso.`);
+        // Lista URLs que iniciaram e que falharam
+        const urlsSucesso = destinos.filter(url => statusPorUrl[url].started && !statusPorUrl[url].erro);
+        const urlsFalha = destinos.filter(url => statusPorUrl[url].erro || !statusPorUrl[url].started);
+
+        if (urlsSucesso.length > 0) {
+          console.log(`✅ Transmissão concluída com sucesso para ${urlsSucesso.length} destino(s):`);
+          urlsSucesso.forEach(u => console.log(`   - ${u}`));
+          if (urlsFalha.length > 0) {
+            console.warn(`⚠️ Algumas URLs falharam na transmissão:`);
+            urlsFalha.forEach(u => console.warn(`   - ${u}`));
+          }
           notificarStatus('finished', streamInfo.id);
           limparArtefatos();
           resolve();
         } else {
-          console.error(`❌ Falha na transmissão. Código: ${code}`);
+          console.error('❌ Todos os destinos falharam. Transmissão não foi realizada.');
+          urlsFalha.forEach(u => console.error(`   - ${u}`));
           notificarStatus('error', streamInfo.id);
           limparArtefatos();
-          reject(new Error(`FFmpeg falhou com código ${code}`));
+          reject(new Error('Nenhuma das URLs conseguiu iniciar a transmissão.'));
         }
       });
     });
