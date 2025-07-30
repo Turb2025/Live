@@ -117,16 +117,30 @@ async function notificarStatus(status, id) {
 
     console.log(`\n⏳ Duração total estimada da live: ${formatarTempo(duracaoTotal)}\n`);
 
-    const concatStr = `concat:${tsList.join('|')}`;
-    const teeOutputs = destinos.map(url => `[f=flv:onfail=ignore]${url}`).join('|');
+    // Cria o filtro concat para ffmpeg, lista os inputs separados
+    const filterComplex = tsList
+      .map((_, i) => `[${i}:v:0][${i}:a:0]`)
+      .join('') + `concat=n=${tsList.length}:v=1:a=1[outv][outa]`;
 
-    const ffmpegArgs = [
-      '-re',
-      '-i', concatStr,
-      '-c', 'copy',
+    // Monta os argumentos do ffmpeg com múltiplos inputs (cada ts um -i)
+    const ffmpegArgs = [];
+
+    tsList.forEach(tsFile => {
+      ffmpegArgs.push('-i', tsFile);
+    });
+
+    ffmpegArgs.push(
+      '-filter_complex', filterComplex,
+      '-map', '[outv]',
+      '-map', '[outa]',
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-c:a', 'aac',
+      '-ar', '44100',
+      '-b:a', '128k',
       '-f', 'tee',
-      teeOutputs
-    ];
+      destinos.map(url => `[f=flv:onfail=ignore]${url}`).join('|')
+    );
 
     console.log('▶️ Comando FFmpeg:');
     console.log(`ffmpeg ${ffmpegArgs.join(' ')}`);
@@ -158,20 +172,16 @@ async function notificarStatus(status, id) {
         clearInterval(intervalo);
         process.stdout.write('\n');
 
-        const streamsSucesso = destinos.filter(url =>
-          !stderrLogs.includes(url) || !stderrLogs.includes('Server error')
-        );
-
-        if (streamsSucesso.length > 0) {
-          console.log(`✅ Transmissão concluída com sucesso para ${streamsSucesso.length} destino(s).`);
+        if (code === 0) {
+          console.log(`✅ Transmissão concluída com sucesso.`);
           notificarStatus('finished', streamInfo.id);
           limparArtefatos();
           resolve();
         } else {
-          console.error(`❌ Todos os destinos falharam. Transmissão não foi realizada.`);
+          console.error(`❌ Falha na transmissão. Código: ${code}`);
           notificarStatus('error', streamInfo.id);
           limparArtefatos();
-          reject(new Error('Nenhuma das URLs conseguiu iniciar a transmissão.'));
+          reject(new Error(`FFmpeg falhou com código ${code}`));
         }
       });
     });
